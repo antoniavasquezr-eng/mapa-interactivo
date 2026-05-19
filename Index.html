@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<title>Mapa Vivo del Territorio | Educación Rural Chile</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --verde:     #2D7D52;
+  --verde-l:  #4CAF80;
+  --cielo:    #4A90D9;
+  --cielo-l:  #7BB8F0;
+  --sol:      #F5A623;
+  --sol-l:    #FFD080;
+  --tierra:   #C0724A;
+  --nieve:    #FAFAF7;
+  --piedra:   #8C8880;
+  --carbon:   #1E1C18;
+  --bg:       #F4F1EA;
+  --card-bg:  #FFFFFF;
+  --border:   rgba(45,125,82,0.18);
+}
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--carbon);
+  min-height: 100vh;
+}
+
+/* ─── HEADER ─── */
+header {
+  background: linear-gradient(135deg, #2D7D52 0%, #1A5C3A 60%, #4A90D9 100%);
+  padding: 2.5rem 2rem 2rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle at 80% 30%, rgba(255,255,255,0.08) 0%, transparent 50%),
+                    radial-gradient(circle at 20% 80%, rgba(74,144,217,0.15) 0%, transparent 40%);
+}
+.header-eyebrow {
+  font-size: 0.65rem;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.75);
+  margin-bottom: 0.6rem;
+  position: relative;
+}
+header h1 {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(2rem, 5vw, 3.4rem);
+  color: #fff;
+  line-height: 1.15;
+  position: relative;
+}
+header h1 em {
+  color: var(--sol-l);
+  font-style: italic;
+}
+header p {
+  color: rgba(255,255,255,0.82);
+  font-size: 1rem;
+  max-width: 520px;
+  margin: 0.6rem auto 0;
+  font-weight: 300;
+  position: relative;
+}
+
+/* ─── STATS ─── */
+.stats-bar {
+  display: flex;
+  justify-content: center;
+  gap: 3rem;
+  padding: 1.2rem;
+  background: #fff;
+  border-bottom: 2px solid var(--border);
+  flex-wrap: wrap;
+}
+.stat { text-align: center; }
+.stat-num {
+  font-family: 'Fraunces', serif;
+  font-size: 2rem;
+  color: var(--verde);
+  font-weight: 700;
+  display: block;
+}
+.stat-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--piedra);
+}
+
+/* ─── LAYOUT PRINCIPAL ─── */
+.main-layout {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  gap: 2rem;
+  align-items: start;
+}
+@media (max-width: 860px) {
+  .main-layout { grid-template-columns: 1fr; }
+}
+
+/* ─── MAPA CHILE ESTILIZADO ─── */
+.map-panel {
+  background: #fff;
+  border-radius: 24px;
+  padding: 1.5rem 1rem;
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 24px rgba(45,125,82,0.08);
+  position: sticky;
+  top: 1rem;
+}
+.map-hint {
+  text-align: center;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--verde);
+  margin-bottom: 1rem;
+  font-weight: 500;
+}
+
+.map-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+  max-height: 780px;
+}
+
+/* Estilos de las Regiones reales */
+.reg { 
+  stroke: #ffffff; 
+  stroke-width: 1.2; 
+  cursor: pointer; 
+  transition: all 0.25s ease; 
+}
+.reg:hover { 
+  filter: brightness(1.1) saturate(1.2); 
+  stroke-width: 2.5; 
+  stroke: var(--sol);
+}
+
+/* Colores de zonas climáticas */
+.zona-norte { fill: #E8A96A; }
+.zona-norte-chico { fill: #D4885A; }
+.zona-central { fill: #6DB87A; }
+.zona-sur { fill: #5A9E8A; }
+.zona-austral { fill: #6B8FB8; }
+.zona-extrema { fill: #8CA8C8; }
+
+/* Tooltip nativo o etiquetas simplificadas */
+.ocean-label {
+  font-family: 'Fraunces', serif;
+  font-size: 10px;
+  fill: rgba(74,144,217,0.45);
+  font-style: italic;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+/* ─── PANEL DERECHO ─── */
+.right-panel { display: flex; flex-direction: column; gap: 1.5rem; }
+
+.section-heading {
+  font-family: 'Fraunces', serif;
+  font-size: 1.5rem;
+  color: var(--carbon);
+  margin-bottom: 0.3rem;
+}
+.section-sub {
+  font-size: 0.8rem;
+  color: var(--piedra);
+}
+
+/* ─── FILTROS ─── */
+.filtros-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.filtro-btn {
+  border: 1.5px solid var(--border);
+  background: #fff;
+  color: var(--piedra);
+  padding: 0.3rem 0.9rem;
+  border-radius: 40px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-family: 'DM Sans', sans-serif;
+  transition: 0.2s;
+}
+.filtro-btn.active, .filtro-btn:hover {
+  background: var(--verde);
+  color: #fff;
+  border-color: var(--verde);
+}
+
+/* ─── CARDS ─── */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 1.2rem;
+  transition: 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--verde), var(--cielo));
+}
+.card:hover {
+  border-color: var(--verde-l);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(45,125,82,0.12);
+}
+.card-region-tag {
+  display: inline-block;
+  background: rgba(45,125,82,0.1);
+  color: var(--verde);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 500;
+  padding: 0.2rem 0.6rem;
+  border-radius: 20px;
+  margin-bottom: 0.8rem;
+}
+.card-item {
+  margin-bottom: 0.6rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #444;
+}
+.card-item strong { color: var(--carbon); font-size: 0.75rem; display: block; margin-bottom: 0.15rem; }
+.card-date { font-size: 0.68rem; color: var(--piedra); margin-top: 0.6rem; }
+
+.empty-state {
+  grid-column: 1/-1;
+  text-align: center;
+  padding: 3.5rem;
+  color: var(--piedra);
+  font-style: italic;
+  background: #fff;
+  border-radius: 18px;
+  border: 1px dashed var(--border);
+}
+.empty-state .emoji { font-size: 2rem; display: block; margin-bottom: 0.5rem; }
+
+/* ─── MODAL ─── */
+.modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(30,28,24,0.75);
+  backdrop-filter: blur(8px);
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+}
+.modal.open { display: flex; }
+
+.modal-box {
+  background: #fff;
+  max-width: 480px;
+  width: 100%;
+  border-radius: 28px;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.25);
+  animation: slideUp 0.25s ease;
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.modal-header {
+  background: linear-gradient(135deg, var(--verde), #1A5C3A);
+  padding: 1.4rem 1.6rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.modal-header h3 {
+  font-family: 'Fraunces', serif;
+  color: #fff;
+  font-size: 1.3rem;
+}
+.close-btn {
+  background: rgba(255,255,255,0.15);
+  border: none;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: #fff;
+  font-size: 18px;
+  display: flex; align-items: center; justify-content: center;
+  transition: 0.2s;
+}
+.close-btn:hover { background: rgba(255,255,255,0.3); }
+
+.modal-body { padding: 1.6rem; }
+
+.form-group { margin-bottom: 1.1rem; }
+.form-group label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--carbon);
+  margin-bottom: 0.4rem;
+}
+.form-group textarea {
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.9rem;
+  color: var(--carbon);
+  resize: vertical;
+  min-height: 72px;
+  transition: 0.2s;
+}
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--verde);
+  background: #fff;
+}
+.btn-submit {
+  width: 100%;
+  background: linear-gradient(135deg, var(--verde), #1A5C3A);
+  color: #fff;
+  border: none;
+  padding: 0.9rem;
+  border-radius: 40px;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 500;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.btn-submit:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(45,125,82,0.3); }
+
+/* ─── FOOTER ─── */
+footer {
+  text-align: center;
+  padding: 1.5rem;
+  font-size: 0.72rem;
+  color: var(--piedra);
+  border-top: 1px solid var(--border);
+  background: #fff;
+  margin-top: 2rem;
+  line-height: 1.8;
+}
+
+/* ─── LEYENDA ZONA ─── */
+.leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  justify-content: center;
+}
+.ley-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.65rem;
+  color: var(--piedra);
+}
+.ley-dot {
+  width: 10px; height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-eyebrow">Diplomado · Educación Rural Multigrado</div>
+  <h1>Mapa Vivo del <em>Territorio</em></h1>
+  <p>Pueblos, saberes, oficios y memorias que nos hacen quiénes somos. Haz clic en tu región.</p>
+</header>
+
+<div class="stats-bar">
+  <div class="stat"><span class="stat-num" id="totalAportes">0</span><span class="stat-label">Aportes compartidos</span></div>
+  <div class="stat"><span class="stat-num" id="totalRegiones">0</span><span class="stat-label">Regiones presentes</span></div>
+</div>
+
+<div class="main-layout">
+
+  <!-- ── MAPA CHILE CORREGIDO REALISTA ── -->
+  <div class="map-panel">
+    <div class="map-hint">🗺️ Haz clic en tu región</div>
+
+    <!-- Rediseño completo de viewBox y trazos estilizados pero geográficamente fieles a Chile -->
+    <svg class="map-svg" viewBox="0 0 120 740" xmlns="http://www.w3.org/2000/svg">
+      <text class="ocean-label" x="25" y="320" transform="rotate(-90 25 320)">Océano Pacífico</text>
+
+      <!-- Región XV: Arica y Parinacota -->
+      <path class="reg zona-norte" title="Arica y Parinacota" onclick="openModal('Arica y Parinacota')"
+        d="M 92 15 L 115 22 L 108 42 L 86 35 Z" />
+
+      <!-- Región I: Tarapacá -->
+      <path class="reg zona-norte" title="Tarapacá" onclick="openModal('Tarapacá')"
+        d="M 86 35 L 108 42 L 112 78 L 84 75 Z" />
+
+      <!-- Región II: Antofagasta -->
+      <path class="reg zona-norte" title="Antofagasta" onclick="openModal('Antofagasta')"
+        d="M 84 75 L 112 78 L 118 142 L 72 135 L 75 105 Z" />
+
+      <!-- Región III: Atacama -->
+      <path class="reg zona-norte-chico" title="Atacama" onclick="openModal('Atacama')"
+        d="M 72 135 L 118 142 L 104 205 L 62 195 Z" />
+
+      <!-- Región IV: Coquimbo -->
+      <path class="reg zona-norte-chico" title="Coquimbo" onclick="openModal('Coquimbo')"
+        d="M 62 195 L 104 205 L 94 260 L 54 250 Z" />
+
+      <!-- Región V: Valparaíso -->
+      <path class="reg zona-central" title="Valparaíso" onclick="openModal('Valparaíso')"
+        d="M 54 250 L 94 260 L 88 285 L 50 282 Z" />
+
+      <!-- Región RM: Metropolitana -->
+      <path class="reg zona-central" title="Metropolitana" onclick="openModal('Metropolitana')"
+        d="M 54 282 L 88 285 L 84 312 L 56 308 Z" />
+
+      <!-- Región VI: O'Higgins -->
+      <path class="reg zona-central" title="O'Higgins" onclick="openModal('O\'Higgins')"
+        d="M 50 282 L 56 308 L 84 312 L 80 334 L 46 325 Z" />
+
+      <!-- Región VII: Maule -->
+      <path class="reg zona-central" title="Maule" onclick="openModal('Maule')"
+        d="M 46 325 L 80 334 L 76 368 L 40 360 Z" />
+
+      <!-- Región XVI: Ñuble -->
+      <path class="reg zona-central" title="Ñuble" onclick="openModal('Ñuble')"
+        d="M 40 360 L 76 368 L 72 390 L 38 384 Z" />
+
+      <!-- Región VIII: Biobío -->
+      <path class="reg zona-sur" title="Biobío" onclick="openModal('Biobío')"
+        d="M 38 384 L 72 390 L 68 420 L 32 414 Z" />
+
+      <!-- Región IX: La Araucanía -->
+      <path class="reg zona-sur" title="La Araucanía" onclick="openModal('La Araucanía')"
+        d="M 32 414 L 68 420 L 64 460 L 30 454 Z" />
+
+      <!-- Región XIV: Los Ríos -->
+      <path class="reg zona-sur" title="Los Ríos" onclick="openModal('Los Ríos')"
+        d="M 30 454 L 64 460 L 62 490 L 28 484 Z" />
+
+      <!-- Región X: Los Lagos -->
+      <path class="reg zona-sur" title="Los Lagos" onclick="openModal('Los Lagos')"
+        d="M 28 484 L 62 490 L 66 550 L 44 560 L 24 530 Z" />
+
+      <!-- Región XI: Aysén -->
+      <path class="reg zona-austral" title="Aysén" onclick="openModal('Aysén')"
+        d="M 24 530 L 44 560 L 66 550 L 58 640 L 20 620 Z" />
+
+      <!-- Región XII: Magallanes -->
+      <path class="reg zona-extrema" title="Magallanes" onclick="openModal('Magallanes')"
+        d="M 20 620 L 58 640 L 64 715 L 42 730 L 15 700 Z" />
+    </svg>
+
+    <div class="leyenda">
+      <div class="ley-item"><div class="ley-dot" style="background:#E8A96A"></div>Norte</div>
+      <div class="ley-item"><div class="ley-dot" style="background:#D4885A"></div>Norte Chico</div>
+      <div class="ley-item"><div class="ley-dot" style="background:#6DB87A"></div>Central</div>
+      <div class="ley-item"><div class="ley-dot" style="background:#5A9E8A"></div>Sur</div>
+      <div class="ley-item"><div class="ley-dot" style="background:#6B8FB8"></div>Austral</div>
+      <div class="ley-item"><div class="ley-dot" style="background:#8CA8C8"></div>Extremo Sur</div>
+    </div>
+  </div>
+
+  <!-- ── PANEL DERECHO ── -->
+  <div class="right-panel">
+    <div>
+      <h2 class="section-heading">📌 Aportes del territorio</h2>
+      <p class="section-sub">Todos los participantes pueden ver y leer los aportes.</p>
+    </div>
+    <div class="filtros-wrap" id="filtrosRegiones">
+      <button class="filtro-btn active" data-region="Todas" onclick="filtrarPorRegion('Todas')">🌿 Todas las regiones</button>
+    </div>
+    <div id="cardsContainer" class="cards-grid">
+      <div class="empty-state">
+        <span class="emoji">🌱</span>
+        Aún no hay aportes. Haz clic en tu región del mapa para comenzar a compartir.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── MODAL ── -->
+<div id="modal" class="modal" onclick="handleModalBackdrop(event)">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="modalRegionTitle">Agregar aporte</h3>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="aporteForm">
+        <div class="form-group">
+          <label>🌿 Espacios vivos (ríos, cerros, ferias, iglesias, etc.)</label>
+          <textarea id="espacios" placeholder="Ej: Río Copiapó, Cerro La Cruz, Feria costumbrista..." required></textarea>
+        </div>
+        <div class="form-group">
+          <label>🤝 Actores clave (artesanos, organizaciones, vecinos, etc.)</label>
+          <textarea id="actores" placeholder="Ej: Taller de tejedoras, Junta de Vecinos, Cooperativa campesina..." required></textarea>
+        </div>
+        <div class="form-group">
+          <label>🧠 Saberes locales (oficios, tradiciones, recetas, relatos)</label>
+          <textarea id="saberes" placeholder="Ej: Mingaco, pan amasado, remedios herbarios, cestería en totora..." required></textarea>
+        </div>
+        <button type="submit" class="btn-submit">🌿 Compartir en el mapa</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<footer>
+  🏔️ Mapa Territorial Educativo &nbsp;·&nbsp; Diplomado Educación Rural Multigrado &nbsp;·&nbsp; Fundación 99<br>
+  Cada aporte es una semilla que enriquece nuestra mirada colectiva del territorio chileno.
+</footer>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyB9m45-cjdW2ssFJCRCF77IiXjlNZkr7bk",
+    authDomain: "mapa-interactivo-6194c.firebaseapp.com",
+    projectId: "mapa-interactivo-6194c",
+    storageBucket: "mapa-interactivo-6194c.firebasestorage.app",
+    messagingSenderId: "385549648174",
+    appId: "1:385549648174:web:d4395e2683b4b3e388babf",
+    measurementId: "G-G0YGWZ8GY6"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  let currentRegion = null;
+  let allAportes = [];
+  let regionFiltroActual = "Todas";
+
+  const modal = document.getElementById('modal');
+  const modalRegionTitle = document.getElementById('modalRegionTitle');
+  const aporteForm = document.getElementById('aporteForm');
+  const cardsContainer = document.getElementById('cardsContainer');
+  const totalAportesSpan = document.getElementById('totalAportes');
+  const totalRegionesSpan = document.getElementById('totalRegiones');
+  const filtrosRegionesDiv = document.getElementById('filtrosRegiones');
+
+  window.openModal = function(region) {
+    currentRegion = region;
+    modalRegionTitle.innerText = `📍 ${region}`;
+    modal.classList.add('open');
+    document.getElementById('espacios').value = '';
+    document.getElementById('actores').value = '';
+    document.getElementById('saberes').value = '';
+  };
+
+  window.closeModal = function() {
+    modal.classList.remove('open');
+    currentRegion = null;
+  };
+
+  window.handleModalBackdrop = function(e) {
+    if (e.target === modal) closeModal();
+  };
+
+  aporteForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!currentRegion) return;
+
+    const espacios = document.getElementById('espacios').value.trim();
+    const actores  = document.getElementById('actores').value.trim();
+    const saberes  = document.getElementById('saberes').value.trim();
+
+    if (!espacios || !actores || !saberes) {
+      alert("Por favor completa todos los campos.");
+      return;
+    }
+
+    const btn = aporteForm.querySelector('.btn-submit');
+    btn.textContent = 'Guardando…';
+    btn.disabled = true;
+
+    try {
+      await db.collection("aportes").add({
+        region: currentRegion,
+        espacios, actores, saberes,
+        fecha: new Date().toISOString()
+      });
+      closeModal();
+    } catch (err) {
+      console.error(err);
+      alert("Hubo un error al guardar. Revisa la configuración de Firebase.");
+    } finally {
+      btn.textContent = '🌿 Compartir en el mapa';
+      btn.disabled = false;
+    }
+  });
+
+  function cargarAportes() {
+    db.collection("aportes").orderBy("fecha", "desc").onSnapshot((snapshot) => {
+      allAportes = [];
+      snapshot.forEach(doc => allAportes.push({ id: doc.id, ...doc.data() }));
+
+      totalAportesSpan.innerText = allAportes.length;
+      const regionesUnicas = [...new Set(allAportes.map(a => a.region))];
+      totalRegionesSpan.innerText = regionesUnicas.length;
+
+      actualizarFiltros(regionesUnicas);
+      mostrarAportes();
+    });
+  }
+
+  function actualizarFiltros(regiones) {
+    const existentes = Array.from(filtrosRegionesDiv.querySelectorAll('.filtro-btn'))
+      .map(b => b.getAttribute('data-region'));
+
+    // Orden jerárquico aproximado o alfabético para los botones dinámicos
+    [...regiones].sort().forEach(r => {
+      if (!existentes.includes(r)) {
+        const btn = document.createElement('button');
+        btn.className = 'filtro-btn';
+        btn.setAttribute('data-region', r);
+        btn.textContent = r;
+        btn.onclick = () => filtrarPorRegion(r);
+        filtrosRegionesDiv.appendChild(btn);
+      }
+    });
+  }
+
+  window.filtrarPorRegion = function(region) {
+    regionFiltroActual = region;
+    document.querySelectorAll('.filtro-btn').forEach(b =>
+      b.classList.toggle('active', b.getAttribute('data-region') === region)
+    );
+    mostrarAportes();
+  };
+
+  function mostrarAportes() {
+    const lista = regionFiltroActual === "Todas"
+      ? allAportes
+      : allAportes.filter(a => a.region === regionFiltroActual);
+
+    if (!lista.length) {
+      cardsContainer.innerHTML = `<div class="empty-state"><span class="emoji">🌱</span>No hay aportes para esta región aún. ¡Anímate a compartir el tuyo!</div>`;
+      return;
+    }
+
+    cardsContainer.innerHTML = lista.map(a => `
+      <div class="card">
+        <div class="card-region-tag">📍 ${a.region}</div>
+        <div class="card-item"><strong>🌿 Espacios vivos</strong>${a.espacios}</div>
+        <div class="card-item"><strong>🤝 Actores clave</strong>${a.actores}</div>
+        <div class="card-item"><strong>🧠 Saberes locales</strong>${a.saberes}</div>
+        <div class="card-date">📅 ${new Date(a.fecha).toLocaleDateString('es-CL', {day:'numeric', month:'long', year:'numeric'})}</div>
+      </div>
+    `).join('');
+  }
+
+  cargarAportes();
+</script>
+</body>
+</html>
